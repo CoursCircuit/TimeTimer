@@ -1,0 +1,4 @@
+node_modules/
+dist/
+TimeTimer-darwin-arm64/
+.DS_Store

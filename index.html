@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; media-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'">
+  <title>TimeTimer</title>
+  <style>
+    :root {
+      --accent: #ff665f;
+      --accent-strong: #ff544d;
+      --panel: rgba(24, 27, 32, 0.9);
+      --panel-border: rgba(255, 255, 255, 0.16);
+      --text: #f7f8fa;
+      --muted: rgba(240, 243, 247, 0.55);
+      --track: rgba(216, 223, 232, 0.16);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    body {
+      padding: 8px;
+      color: var(--text);
+      user-select: none;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    #widget {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      grid-template-rows: 34px minmax(0, 1fr) auto auto;
+      gap: 8px;
+      padding: 10px 12px 12px;
+      overflow: hidden;
+      border: 1px solid var(--panel-border);
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow:
+        0 18px 50px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      -webkit-backdrop-filter: blur(26px) saturate(125%);
+      backdrop-filter: blur(26px) saturate(125%);
+      -webkit-app-region: drag;
+    }
+
+    .utility-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-width: 0;
+    }
+
+    .utility-group {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .utility-button,
+    .transport-button {
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid transparent;
+      background: transparent;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      transition:
+        color 150ms ease,
+        background-color 150ms ease,
+        border-color 150ms ease,
+        transform 100ms ease;
+    }
+
+    .utility-button {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      color: var(--muted);
+    }
+
+    .utility-button:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .utility-button.danger:hover {
+      color: #ff8d88;
+      background: rgba(255, 102, 95, 0.1);
+      border-color: rgba(255, 102, 95, 0.14);
+    }
+
+    .utility-button:active,
+    .transport-button:active {
+      transform: scale(0.94);
+    }
+
+    .utility-button svg {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .utility-button .state-icon {
+      display: none;
+    }
+
+    #widget[data-mode="timer"] #mode-toggle .timer-icon,
+    #widget[data-mode="stopwatch"] #mode-toggle .stopwatch-icon,
+    #widget[data-shape="circle"] #shape-toggle .circle-icon,
+    #widget[data-shape="bar"] #shape-toggle .bar-icon {
+      display: block;
+    }
+
+    .visual-stage {
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      -webkit-app-region: drag;
+    }
+
+    .circle-view {
+      position: relative;
+      width: min(240px, 100%);
+      aspect-ratio: 1;
+      display: none;
+      place-items: center;
+    }
+
+    #widget[data-shape="circle"] .circle-view {
+      display: grid;
+    }
+
+    .progress-ring {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      transform: rotate(-90deg);
+    }
+
+    .ring-track,
+    .ring-value {
+      fill: none;
+      stroke-width: 14;
+    }
+
+    .ring-track {
+      stroke: var(--track);
+    }
+
+    .ring-value {
+      stroke: var(--accent);
+      stroke-linecap: round;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 0;
+      transition: stroke-dashoffset 120ms linear;
+    }
+
+    .time-readout {
+      position: relative;
+      z-index: 1;
+      color: var(--text);
+      font-size: clamp(48px, 16vw, 62px);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.045em;
+      line-height: 1;
+      text-shadow: 0 2px 16px rgba(0, 0, 0, 0.24);
+    }
+
+    .bar-view {
+      width: 100%;
+      display: none;
+      grid-template-rows: auto 12px;
+      gap: 22px;
+      align-content: center;
+      padding: 2px 18px 4px;
+    }
+
+    #widget[data-shape="bar"] .bar-view {
+      display: grid;
+    }
+
+    .bar-view .time-readout {
+      justify-self: center;
+      font-size: clamp(48px, 14vw, 64px);
+    }
+
+    .progress-track {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--track);
+    }
+
+    .progress-value {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+      transform: scaleX(1);
+      transform-origin: left center;
+      transition: transform 120ms linear;
+    }
+
+    .time-inputs {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 34px;
+      -webkit-app-region: no-drag;
+    }
+
+    .time-inputs[hidden] {
+      display: none;
+    }
+
+    .time-input {
+      width: 54px;
+      height: 32px;
+      padding: 0 5px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      outline: none;
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 550;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      -moz-appearance: textfield;
+      transition: border-color 150ms ease, background-color 150ms ease;
+    }
+
+    .time-input::-webkit-inner-spin-button,
+    .time-input::-webkit-outer-spin-button {
+      margin: 0;
+      -webkit-appearance: none;
+    }
+
+    .time-input:focus {
+      border-color: rgba(255, 102, 95, 0.7);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .time-input:disabled {
+      color: var(--muted);
+      opacity: 0.7;
+    }
+
+    .time-separator {
+      color: var(--muted);
+      font-weight: 600;
+      transform: translateY(-1px);
+    }
+
+    .transport-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      min-height: 48px;
+      -webkit-app-region: no-drag;
+    }
+
+    .transport-button {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      color: var(--muted);
+      border-color: rgba(255, 255, 255, 0.11);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .transport-button.primary {
+      width: 48px;
+      height: 48px;
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.12);
+      background: var(--accent);
+      box-shadow: 0 8px 22px rgba(255, 84, 77, 0.2);
+    }
+
+    .transport-button:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .transport-button.primary:hover {
+      background: var(--accent-strong);
+    }
+
+    .transport-button svg {
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .transport-button .pause-icon {
+      display: none;
+    }
+
+    #widget[data-running="true"] #play-pause .play-icon {
+      display: none;
+    }
+
+    #widget[data-running="true"] #play-pause .pause-icon {
+      display: block;
+    }
+
+    .invalid {
+      animation: nudge 220ms ease-in-out 2;
+    }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid rgba(255, 125, 118, 0.92);
+      outline-offset: 2px;
+    }
+
+    @keyframes nudge {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(4px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="widget" data-mode="timer" data-shape="circle" data-running="false">
+    <header class="utility-bar" aria-label="Options de la fenêtre">
+      <div class="utility-group">
+        <button id="mode-toggle" class="utility-button" type="button" title="Passer au chronomètre" aria-label="Passer au chronomètre">
+          <svg class="state-icon timer-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 3h10M7 21h10M8 3c0 4 1.7 5.2 4 7 2.3-1.8 4-3 4-7M8 21c0-4 1.7-5.2 4-7 2.3 1.8 4 3 4 7"/>
+          </svg>
+          <svg class="state-icon stopwatch-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 2h6M12 2v3M17.5 6.5 19 5M12 7a7 7 0 1 0 0 14 7 7 0 0 0 0-14Z"/>
+            <path d="M12 11v4l2.6 1.5"/>
+          </svg>
+        </button>
+        <button id="shape-toggle" class="utility-button" type="button" title="Afficher une barre" aria-label="Afficher une barre">
+          <svg class="state-icon circle-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="8"/>
+            <path d="M12 4a8 8 0 0 1 8 8"/>
+          </svg>
+          <svg class="state-icon bar-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9.5h16a2.5 2.5 0 0 1 0 5H4a2.5 2.5 0 0 1 0-5Z"/>
+            <path d="M4 9.5h9.5v5H4a2.5 2.5 0 0 1 0-5Z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="utility-group">
+        <button id="add-window" class="utility-button" type="button" title="Ajouter un timer" aria-label="Ajouter une fenêtre de timer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button id="delete-window" class="utility-button danger" type="button" title="Supprimer cette fenêtre" aria-label="Supprimer cette fenêtre">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="visual-stage" aria-label="Temps">
+      <div class="circle-view" aria-hidden="true">
+        <svg class="progress-ring" viewBox="0 0 240 240">
+          <circle class="ring-track" cx="120" cy="120" r="105"/>
+          <circle id="ring-value" class="ring-value" cx="120" cy="120" r="105" pathLength="1"/>
+        </svg>
+        <output id="circle-time" class="time-readout">05:00</output>
+      </div>
+      <div class="bar-view" aria-hidden="true">
+        <output id="bar-time" class="time-readout">05:00</output>
+        <div class="progress-track"><div id="bar-value" class="progress-value"></div></div>
+      </div>
+      <output id="accessible-time" class="visually-hidden" aria-live="off">05:00</output>
+    </section>
+
+    <div id="time-inputs" class="time-inputs" aria-label="Durée du timer">
+      <label class="visually-hidden" for="minutes">Minutes</label>
+      <input id="minutes" class="time-input" type="number" inputmode="numeric" min="0" max="599" value="5" aria-label="Minutes">
+      <span class="time-separator" aria-hidden="true">:</span>
+      <label class="visually-hidden" for="seconds">Secondes</label>
+      <input id="seconds" class="time-input" type="number" inputmode="numeric" min="0" max="59" value="0" aria-label="Secondes">
+    </div>
+
+    <div class="transport-controls" aria-label="Commandes du temps">
+      <button id="play-pause" class="transport-button primary" type="button" title="Démarrer" aria-label="Démarrer">
+        <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6Z" fill="currentColor" stroke="none"/></svg>
+        <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7v10M15 7v10" stroke-width="2.6"/></svg>
+      </button>
+      <button id="reset" class="transport-button" type="button" title="Réinitialiser" aria-label="Réinitialiser">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8V4m0 0h4M5 4l2.5 2.5A7.5 7.5 0 1 1 5 12"/></svg>
+      </button>
+    </div>
+  </main>
+
+  <audio id="bell" src="bell.mp3" preload="auto"></audio>
+  <script src="renderer.js"></script>
+</body>
+</html>
